@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 import plotly.graph_objs as go
+import plotly.express as px
 import streamlit as st
 
 from webapp.helpers import switch_page
@@ -23,6 +24,36 @@ def render_metric(
         unsafe_allow_html=True,
     )
 
+def prepare_data_for_stacked_bar_chart(df: pd.DataFrame):
+    df.index = pd.to_datetime(df["date"])
+    df["Bank"] = df["bank"]
+    df["Income"] = df["amount"].apply(lambda x: x if x > 0 else 0)
+    df["Expenses"] = df["amount"].apply(lambda x: abs(x) if x < 0 else 0)
+    df = df.drop(columns=["description", "date"])
+    df = df.resample("MS").sum()
+    return df
+
+def prepare_data_for_bar_chart_by_date(df: pd.DataFrame):
+    df["Income"] = df["amount"].apply(lambda x: x if x > 0 else 0)
+    df["Expenses"] = df["amount"].apply(lambda x: abs(x) if x < 0 else 0)
+    df.groupby('date').agg({ 'Income': 'sum', 'Expenses': 'sum' })
+    return df
+
+def show_bar_chart_by_date(df: pd.DataFrame):
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(x=df['date'], y=df['Income'], name='Income', marker_color="#00CEAA"))
+    fig.add_trace(go.Bar(x=df['date'], y=df['Expenses'], name='Expenses', marker_color="#F63366"))
+    
+    fig.update_layout(
+        barmode='group',
+        bargap=0.2,
+        bargroupgap=0.1,
+        yaxis_type="log",
+        yaxis=dict(title="Value (log scale)", tickformat=".2f")
+    )
+    
+    st.plotly_chart(fig)
 
 def show_stacked_bar_chart(df: pd.DataFrame):
     income_trace = go.Bar(
@@ -103,15 +134,8 @@ def show_stacked_bar_chart(df: pd.DataFrame):
 st.markdown("# Visualizations")
 
 if "df" in st.session_state.keys():
-    df: pd.DataFrame = st.session_state["df"].copy()
-    df.index = pd.to_datetime(df["date"])
-    df["Bank"] = df["bank"]
-    df["Income"] = df["amount"].apply(lambda x: x if x > 0 else 0)
-    df["Expenses"] = df["amount"].apply(lambda x: abs(x) if x < 0 else 0)
-    df = df.drop(columns=["description", "date"])
-    df = df.resample("MS").sum()
-
-    show_stacked_bar_chart(df)
+    show_stacked_bar_chart(prepare_data_for_stacked_bar_chart(st.session_state["df"].copy()))
+    show_bar_chart_by_date(prepare_data_for_bar_chart_by_date(st.session_state["df"].copy()))
 
 if "df" not in st.session_state.keys():
     switch_page_button = st.button("Convert a bank statement")
